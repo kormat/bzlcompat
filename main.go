@@ -20,7 +20,7 @@ func main() {
 		os.Exit(1)
 	}
 	log.Printf("Bazel version: %s", info.Version)
-	exts, err := getBzlExtDeps()
+	exts, err := getExtGoDeps()
 	if err != nil {
 		log.Fatalf("FATAL: %s", err)
 		os.Exit(1)
@@ -53,16 +53,13 @@ func getBzlInfo() (*bzl.Info, error) {
 	return bzl.InfoFromString(string(b))
 }
 
-func getBzlExtDeps() (map[string]bzl.ExtGoLib, error) {
-	// Using `--relative_locations=true` makes it possible to differentiate
-	// between the address of the remote repo, and paths inside it.
-	cmd := exec.Command("bazel", "query", "deps(//... except (filter('vendor/', //...)))",
-		"--relative_locations=true", "--output=proto")
+func getExtGoDeps() (map[string]bzl.ExtGoLib, error) {
+	cmd := exec.Command("bazel", "query", "kind('go_repository rule', //external:*)", "--output=proto")
 	b, err := runCmd(cmd)
 	if err != nil {
 		return nil, err
 	}
-	return bzl.LoadQuery(b)
+	return bzl.LoadGoQuery(b)
 }
 
 func runCmd(cmd *exec.Cmd) ([]byte, error) {
