@@ -10,3 +10,11 @@ proto:
 	if [ ! -e $(BZL_PB_DIR)/build.proto ]; then mkdir -p $(BZL_PB_DIR) \
 		&& cd $(BZL_PB_DIR) && curl -sSLO $(BZL_PB_DIR); fi
 	protoc --go_out=. $(BZL_PB_DIR)/build.proto
+
+.PHONY: release
+release:
+	@ver=$$(git describe --tag)$$(git diff HEAD --quiet || echo '-dirty'); \
+		os=$$(uname -s | tr '[:upper:]' '[:lower:]'); \
+		mach=$$(uname -m); \
+		fn="bzlcompat-$$ver-$$os-$$mach"; \
+		go build -o "$$fn"; echo "Built: $$fn"
