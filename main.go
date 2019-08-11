@@ -26,20 +26,10 @@ func main() {
 		os.Exit(1)
 	}
 	log.Printf("Found %d external dependencies", len(exts))
-	count := 0
-	for k, v := range exts {
-		fullPath := path.Join("vendor", v.ImportPath)
-		dir := path.Dir(fullPath)
-		if err := os.MkdirAll(dir, os.ModePerm); err != nil {
-			log.Fatalf("FATAL: unable to create dir: %v", err)
-		}
-		if err := os.Symlink(path.Join(info.OutputBase, "external", k), fullPath); err != nil {
-			if !os.IsExist(err) {
-				log.Fatalf("FATAL: unable to create symlink: %v", err)
-			}
-		} else {
-			count++
-		}
+	count, err := makeLinks(info, exts)
+	if err != nil {
+		log.Fatalf("FATAL: %s", err)
+		os.Exit(1)
 	}
 	log.Printf("Created %d symlinks in vendor/", count)
 }
@@ -73,4 +63,49 @@ func runCmd(cmd *exec.Cmd) ([]byte, error) {
 		}
 	}
 	return b, nil
+}
+
+func makeLinks(info *bzl.Info, exts map[string]bzl.ExtGoLib) (int, error) {
+	count := 0
+	for k, v := range exts {
+		src := path.Join("vendor", v.ImportPath)
+		if err := os.MkdirAll(path.Dir(src), os.ModePerm); err != nil {
+			return 0, fmt.Errorf("unable to create dir: %v", err)
+		}
+		dest := path.Join(info.OutputBase, "external", k)
+		if created, err := makeLink(src, dest); err != nil {
+			return 0, err
+		} else if created {
+			count++
+		}
+	}
+	return count, nil
+}
+
+func makeLink(src, dest string) (bool, error) {
+	fi, err := os.Lstat(src)
+	if err != nil && !os.IsNotExist(err) {
+		return false, err
+	}
+	if err == nil {
+		// File exists, ensure it's a symlink
+		if fi.Mode()&os.ModeSymlink == 0 {
+			return false, fmt.Errorf("non-symlink in the way: %s", src)
+		}
+		origDest, err := os.Readlink(src)
+		if err != nil {
+			return false, fmt.Errorf("unable to read existing symlink: %v", err)
+		}
+		// Symlink already points to the correct place, no need to touch it.
+		if origDest == dest {
+			return false, nil
+		}
+		if err := os.Remove(src); err != nil {
+			return false, err
+		}
+	}
+	if err = os.Symlink(dest, src); err != nil {
+		return false, fmt.Errorf("unable to create symlink: %v", err)
+	}
+	return true, nil
 }

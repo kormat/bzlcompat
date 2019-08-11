@@ -3,19 +3,17 @@ Because using bazel doesn't have to break your normal tools. `bzlcompat` queries
 bazel for all external dependencies of your codebase, and creates a symlink farm
 so your normal tools can find/use them.
 
-(**N.B.**: currently `bzlcompat` only supports Go, but supporting python should be
-easy, for example.)
+(**N.B.**: currently `bzlcompat` only supports Go)
 
 ## Installation
-Download binaries from https://github.com/kormat/bzlcompat/releases, or built it
-yourself following the instructions in the #development section below.
+Download binaries from [releases](/releases), or build it yourself following the
+instructions in the Development section below.
 
 ## Usage
 Add `vendor/` to `.bazelignore` in the top-level of your workspace.
 
 Run `bzlcompat` inside a bazel workspace. It will query bazel, and
 create a symlink farm under `vendor/` for all external go dependencies.
-
 
 ## Development:
 To build `bzlcompat` yourself, install these dependencies:
