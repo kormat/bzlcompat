@@ -1,6 +1,7 @@
 package main
 
 import (
+	"flag"
 	"fmt"
 	"log"
 	"os"
@@ -12,7 +13,10 @@ import (
 	"github.com/kormat/bzlcompat/bzl"
 )
 
+var vendorBase = flag.String("vendorBase", ".", "Directory to create vendor/ in.")
+
 func main() {
+	flag.Parse()
 	log.SetFlags(log.Ldate | log.Ltime | log.Lshortfile)
 	info, err := getBzlInfo()
 	if err != nil {
@@ -31,7 +35,7 @@ func main() {
 		log.Fatalf("FATAL: %s", err)
 		os.Exit(1)
 	}
-	log.Printf("Created %d symlinks in vendor/", count)
+	log.Printf("Created %d symlinks in %s/vendor/", count, *vendorBase)
 }
 
 func getBzlInfo() (*bzl.Info, error) {
@@ -68,7 +72,7 @@ func runCmd(cmd *exec.Cmd) ([]byte, error) {
 func makeLinks(info *bzl.Info, exts map[string]bzl.ExtGoLib) (int, error) {
 	count := 0
 	for k, v := range exts {
-		src := path.Join("vendor", v.ImportPath)
+		src := path.Join(*vendorBase, "vendor", v.ImportPath)
 		if err := os.MkdirAll(path.Dir(src), os.ModePerm); err != nil {
 			return 0, fmt.Errorf("unable to create dir: %v", err)
 		}
