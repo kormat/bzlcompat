@@ -48,7 +48,7 @@ func getBzlInfo() (*bzl.Info, error) {
 }
 
 func getExtGoDeps() (map[string]bzl.ExtGoLib, error) {
-	cmd := exec.Command("bazel", "query", "kind('go_repository rule', //external:*)", "--output=proto")
+	cmd := exec.Command("bazel", "query", "kind('g(o|it)_repository rule', //external:*)", "--output=proto")
 	b, err := runCmd(cmd)
 	if err != nil {
 		return nil, err
