@@ -17,4 +17,4 @@ release:
 		os=$$(uname -s | tr '[:upper:]' '[:lower:]'); \
 		mach=$$(uname -m); \
 		fn="bzlcompat-$$ver-$$os-$$mach"; \
-		go build -o "$$fn"; echo "Built: $$fn"
+		go build -o "$$fn"; sha256sum "$$fn" | tee "$$fn.sha256"
