@@ -8,7 +8,7 @@ BZL_BUILD_PROTO_URL = https://github.com/bazelbuild/bazel/raw/$(BZL_VERSION)/src
 .PHONY: proto
 proto:
 	if [ ! -e $(BZL_PB_DIR)/build.proto ]; then mkdir -p $(BZL_PB_DIR) \
-		&& cd $(BZL_PB_DIR) && curl -sSLO $(BZL_PB_DIR); fi
+		&& cd $(BZL_PB_DIR) && curl -sSLO $(BZL_BUILD_PROTO_URL); fi
 	protoc --go_out=. $(BZL_PB_DIR)/build.proto
 
 .PHONY: release
