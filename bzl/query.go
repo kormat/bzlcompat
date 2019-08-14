@@ -56,6 +56,11 @@ func LoadGoQuery(b []byte) (map[string]ExtGoLib, error) {
 			//   https://github.com/bazelbuild/rules_go/blob/0.18.7/go/private/repositories.bzl#L178
 			importPath = "google.golang.org/genproto"
 		}
+		if strings.HasPrefix(importPath, "go.googlesource.com/") {
+			// XXX(kormat): workaround for mismatch between url and import path:
+			//   https://github.com/bazelbuild/rules_go/blob/0.18.7/go/private/repositories.bzl#L133
+			importPath = "golang.org/x/" + strings.TrimPrefix(importPath, "go.googlesource.com/")
+		}
 		if importPath == "" {
 			return nil, fmt.Errorf("Unable to find importpath for %s", *t.Rule.Name)
 		}
