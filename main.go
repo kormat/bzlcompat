@@ -13,10 +13,19 @@ import (
 	"github.com/kormat/bzlcompat/bzl"
 )
 
-var vendorBase = flag.String("vendorBase", ".", "Directory to create vendor/ in.")
+var (
+	vendorBase  = flag.String("vendorBase", ".", "Directory to create vendor/ in.")
+	versionFlag = flag.Bool("version", false, "Print version and exit")
+
+	version string // Set by make from the git version.
+)
 
 func main() {
 	flag.Parse()
+	if *versionFlag {
+		fmt.Println(version)
+		return
+	}
 	log.SetFlags(log.Ldate | log.Ltime | log.Lshortfile)
 	info, err := getBzlInfo()
 	if err != nil {
