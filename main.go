@@ -9,12 +9,14 @@ import (
 	"path"
 	"strings"
 	"syscall"
+	"text/template"
 
 	"github.com/kormat/bzlcompat/bzl"
 )
 
 var (
-	vendorBase  = flag.String("vendorBase", ".", "Directory to create vendor/ in.")
+	moduleName  = flag.String("moduleName", "", "Module name for go.mod file")
+	vendorBase  = flag.String("vendorBase", "", "Directory to create vendor/ in.")
 	versionFlag = flag.Bool("version", false, "Print version and exit")
 
 	version string // Set by make from the git version.
@@ -39,12 +41,16 @@ func main() {
 		os.Exit(1)
 	}
 	log.Printf("Found %d external dependencies", len(exts))
-	count, err := makeLinks(info, exts)
-	if err != nil {
-		log.Fatalf("FATAL: %s", err)
-		os.Exit(1)
+	if *moduleName != "" {
+		writeGoMod(info, exts)
+	} else if *vendorBase != "" {
+		count, err := makeLinks(info, exts)
+		if err != nil {
+			log.Fatalf("FATAL: %s", err)
+			os.Exit(1)
+		}
+		log.Printf("Created %d symlinks in %s/vendor/", count, *vendorBase)
 	}
-	log.Printf("Created %d symlinks in %s/vendor/", count, *vendorBase)
 }
 
 func getBzlInfo() (*bzl.Info, error) {
@@ -76,6 +82,29 @@ func runCmd(cmd *exec.Cmd) ([]byte, error) {
 		}
 	}
 	return b, nil
+}
+
+func writeGoMod(info *bzl.Info, exts map[string]bzl.ExtGoLib) error {
+
+	type Module struct {
+		Name string
+		Deps map[string]bzl.ExtGoLib
+	}
+
+	tmpl, err := template.New("mod").Parse("module {{.Name}}\n\nrequire (\n{{range $k, $v := .Deps}}\t{{$v.ImportPath}} {{$v.Commit}}\n{{end}})\n")
+	if err != nil {
+		panic(err)
+	}
+	f, err := os.Create(path.Join(info.Workspace, "go.mod"))
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	err = tmpl.Execute(f, Module{Name: *moduleName, Deps: exts})
+	if err != nil {
+		return err
+	}
+	return nil
 }
 
 func makeLinks(info *bzl.Info, exts map[string]bzl.ExtGoLib) (int, error) {
