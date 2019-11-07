@@ -42,7 +42,12 @@ func main() {
 	}
 	log.Printf("Found %d external dependencies", len(exts))
 	if *moduleName != "" {
-		writeGoMod(info, exts)
+		err := writeGoMod(info, exts)
+		if err != nil {
+			log.Fatalf("FATAL: %s", err)
+			os.Exit(1)
+		}
+		log.Printf("Created go.mod")
 	} else if *vendorBase != "" {
 		count, err := makeLinks(info, exts)
 		if err != nil {
@@ -82,29 +87,6 @@ func runCmd(cmd *exec.Cmd) ([]byte, error) {
 		}
 	}
 	return b, nil
-}
-
-func writeGoMod(info *bzl.Info, exts map[string]bzl.ExtGoLib) error {
-
-	type Module struct {
-		Name string
-		Deps map[string]bzl.ExtGoLib
-	}
-
-	tmpl, err := template.New("mod").Parse("module {{.Name}}\n\nrequire (\n{{range $k, $v := .Deps}}\t{{$v.ImportPath}} {{$v.Commit}}\n{{end}})\n")
-	if err != nil {
-		panic(err)
-	}
-	f, err := os.Create(path.Join(info.Workspace, "go.mod"))
-	if err != nil {
-		return err
-	}
-	defer f.Close()
-	err = tmpl.Execute(f, Module{Name: *moduleName, Deps: exts})
-	if err != nil {
-		return err
-	}
-	return nil
 }
 
 func makeLinks(info *bzl.Info, exts map[string]bzl.ExtGoLib) (int, error) {
@@ -150,4 +132,44 @@ func makeLink(src, dest string) (bool, error) {
 		return false, fmt.Errorf("unable to create symlink: %v", err)
 	}
 	return true, nil
+}
+
+func writeGoMod(info *bzl.Info, exts map[string]bzl.ExtGoLib) error {
+
+	type Module struct {
+		Name     string
+		Deps     []bzl.ExtGoLib
+		Replaces []bzl.ExtGoLib
+	}
+
+	module := Module{Name: *moduleName}
+
+	for _, v := range exts {
+		if v.Remote == "" {
+			module.Deps = append(module.Deps, v)
+		} else {
+			dep := v
+			dep.Commit = "v0.0.0" // Unknown
+			module.Deps = append(module.Deps, dep)
+			module.Replaces = append(module.Replaces, v)
+		}
+	}
+
+	tmpl, err := template.New("mod").Parse("module {{.Name}}\n\n" +
+		"require (\n{{range $v := .Deps}}\t{{$v.ImportPath}} {{$v.Commit}}\n{{end}})\n" +
+		"{{range $v := .Replaces}}replace {{$v.ImportPath}} => {{$v.Remote}} {{$v.Commit}}\n{{end}}")
+
+	if err != nil {
+		panic(err)
+	}
+	f, err := os.Create(path.Join(info.Workspace, "go.mod"))
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	err = tmpl.Execute(f, module)
+	if err != nil {
+		return err
+	}
+	return nil
 }
