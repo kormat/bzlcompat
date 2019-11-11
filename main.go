@@ -15,7 +15,7 @@ import (
 )
 
 var (
-	moduleName  = flag.String("moduleName", "", "Module name for go.mod file")
+	moduleName  = flag.String("mod", "", "Module name for go.mod file")
 	vendorBase  = flag.String("vendorBase", "", "Directory to create vendor/ in.")
 	versionFlag = flag.Bool("version", false, "Print version and exit")
 
@@ -42,7 +42,7 @@ func main() {
 	}
 	log.Printf("Found %d external dependencies", len(exts))
 	if *moduleName != "" {
-		err := writeGoMod(info, exts)
+		err := writeGoMod(*moduleName, info, exts)
 		if err != nil {
 			log.Fatalf("FATAL: %s", err)
 			os.Exit(1)
@@ -134,29 +134,29 @@ func makeLink(src, dest string) (bool, error) {
 	return true, nil
 }
 
-func writeGoMod(info *bzl.Info, exts map[string]bzl.ExtGoLib) error {
+func writeGoMod(moduleName string, info *bzl.Info, exts map[string]bzl.ExtGoLib) error {
 
 	type Module struct {
 		Name     string
-		Deps     []bzl.ExtGoLib
+		Requires []bzl.ExtGoLib
 		Replaces []bzl.ExtGoLib
 	}
 
-	module := Module{Name: *moduleName}
+	module := Module{Name: moduleName}
 
 	for _, v := range exts {
 		if v.Remote == "" {
-			module.Deps = append(module.Deps, v)
+			module.Requires = append(module.Requires, v)
 		} else {
 			dep := v
 			dep.Commit = "v0.0.0" // Unknown
-			module.Deps = append(module.Deps, dep)
+			module.Requires = append(module.Requires, dep)
 			module.Replaces = append(module.Replaces, v)
 		}
 	}
 
 	tmpl, err := template.New("mod").Parse("module {{.Name}}\n\n" +
-		"require (\n{{range $v := .Deps}}\t{{$v.ImportPath}} {{$v.Commit}}\n{{end}})\n" +
+		"require (\n{{range $v := .Requires}}\t{{$v.ImportPath}} {{$v.Commit}}\n{{end}})\n" +
 		"{{range $v := .Replaces}}replace {{$v.ImportPath}} => {{$v.Remote}} {{$v.Commit}}\n{{end}}")
 
 	if err != nil {
