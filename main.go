@@ -149,7 +149,7 @@ func writeGoMod(moduleName string, info *bzl.Info, exts map[string]bzl.ExtGoLib)
 			module.Requires = append(module.Requires, v)
 		} else {
 			dep := v
-			dep.Commit = "v0.0.0" // Unknown
+			dep.Commit = "latest" // Unknown
 			module.Requires = append(module.Requires, dep)
 			module.Replaces = append(module.Replaces, v)
 		}
