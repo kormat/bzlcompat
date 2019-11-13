@@ -96,7 +96,7 @@ func parseGoRepository(r *bzlpb.Rule) (string, ExtGoLib, error) {
 			if err != nil {
 				return "", ExtGoLib{}, err
 			}
-		case "commit", "tag":
+		case "commit", "tag", "version":
 			if commit != "" {
 				continue
 			}
