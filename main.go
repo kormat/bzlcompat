@@ -9,12 +9,14 @@ import (
 	"path"
 	"strings"
 	"syscall"
+	"text/template"
 
 	"github.com/kormat/bzlcompat/bzl"
 )
 
 var (
-	vendorBase  = flag.String("vendorBase", ".", "Directory to create vendor/ in.")
+	moduleName  = flag.String("mod", "", "Module name for go.mod file")
+	vendorBase  = flag.String("vendorBase", "", "Directory to create vendor/ in.")
 	versionFlag = flag.Bool("version", false, "Print version and exit")
 
 	version string // Set by make from the git version.
@@ -39,12 +41,21 @@ func main() {
 		os.Exit(1)
 	}
 	log.Printf("Found %d external dependencies", len(exts))
-	count, err := makeLinks(info, exts)
-	if err != nil {
-		log.Fatalf("FATAL: %s", err)
-		os.Exit(1)
+	if *moduleName != "" {
+		err := writeGoMod(*moduleName, info, exts)
+		if err != nil {
+			log.Fatalf("FATAL: %s", err)
+			os.Exit(1)
+		}
+		log.Printf("Created go.mod")
+	} else if *vendorBase != "" {
+		count, err := makeLinks(info, exts)
+		if err != nil {
+			log.Fatalf("FATAL: %s", err)
+			os.Exit(1)
+		}
+		log.Printf("Created %d symlinks in %s/vendor/", count, *vendorBase)
 	}
-	log.Printf("Created %d symlinks in %s/vendor/", count, *vendorBase)
 }
 
 func getBzlInfo() (*bzl.Info, error) {
@@ -121,4 +132,44 @@ func makeLink(src, dest string) (bool, error) {
 		return false, fmt.Errorf("unable to create symlink: %v", err)
 	}
 	return true, nil
+}
+
+func writeGoMod(moduleName string, info *bzl.Info, exts map[string]bzl.ExtGoLib) error {
+
+	type Module struct {
+		Name     string
+		Requires []bzl.ExtGoLib
+		Replaces []bzl.ExtGoLib
+	}
+
+	module := Module{Name: moduleName}
+
+	for _, v := range exts {
+		if v.Remote == "" {
+			module.Requires = append(module.Requires, v)
+		} else {
+			dep := v
+			dep.Commit = "latest" // Unknown
+			module.Requires = append(module.Requires, dep)
+			module.Replaces = append(module.Replaces, v)
+		}
+	}
+
+	tmpl, err := template.New("mod").Parse("module {{.Name}}\n\n" +
+		"require (\n{{range $v := .Requires}}\t{{$v.ImportPath}} {{$v.Commit}}\n{{end}})\n" +
+		"{{range $v := .Replaces}}replace {{$v.ImportPath}} => {{$v.Remote}} {{$v.Commit}}\n{{end}}")
+
+	if err != nil {
+		panic(err)
+	}
+	f, err := os.Create(path.Join(info.Workspace, "go.mod"))
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	err = tmpl.Execute(f, module)
+	if err != nil {
+		return err
+	}
+	return nil
 }

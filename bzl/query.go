@@ -13,6 +13,8 @@ import (
 // ExtGoLib represents an external go library.
 type ExtGoLib struct {
 	ImportPath string
+	Commit     string
+	Remote     string
 }
 
 // LoadGoQuery parses the output of `bazel query` and returns a map of go external
@@ -29,14 +31,15 @@ func LoadGoQuery(b []byte) (map[string]ExtGoLib, error) {
 			log.Printf("WARN: expected target of type RULE, instead got %s", *t.Type)
 			continue
 		}
-		var name, importPath string
+		var name string
+		var extGoLib ExtGoLib
 		switch *t.Rule.RuleClass {
 		case "go_repository":
-			if name, importPath, err = parseGoRepository(t.Rule); err != nil {
+			if name, extGoLib, err = parseGoRepository(t.Rule); err != nil {
 				return nil, err
 			}
 		case "git_repository":
-			if name, importPath, err = parseGitRepository(t.Rule); err != nil {
+			if name, extGoLib, err = parseGitRepository(t.Rule); err != nil {
 				return nil, err
 			}
 		default:
@@ -50,21 +53,25 @@ func LoadGoQuery(b []byte) (map[string]ExtGoLib, error) {
 		case "org_golang_google_grpc":
 			// XXX(kormat): workaround for mismatch between url and import path:
 			//   https://github.com/bazelbuild/rules_go/blob/0.18.7/go/private/repositories.bzl#L164
-			importPath = "google.golang.org/grpc"
+			extGoLib.ImportPath = "google.golang.org/grpc"
 		case "org_golang_google_genproto":
 			// XXX(kormat): workaround for mismatch between url and import path:
 			//   https://github.com/bazelbuild/rules_go/blob/0.18.7/go/private/repositories.bzl#L178
-			importPath = "google.golang.org/genproto"
+			extGoLib.ImportPath = "google.golang.org/genproto"
 		}
-		if strings.HasPrefix(importPath, "go.googlesource.com/") {
+		if strings.HasPrefix(extGoLib.ImportPath, "go.googlesource.com/") {
 			// XXX(kormat): workaround for mismatch between url and import path:
 			//   https://github.com/bazelbuild/rules_go/blob/0.18.7/go/private/repositories.bzl#L133
-			importPath = "golang.org/x/" + strings.TrimPrefix(importPath, "go.googlesource.com/")
+			extGoLib.ImportPath = "golang.org/x/" + strings.TrimPrefix(extGoLib.ImportPath, "go.googlesource.com/")
 		}
-		if importPath == "" {
+		if strings.HasSuffix(extGoLib.ImportPath, ".git") {
+			// This is probably not a go repository
+			continue
+		}
+		if extGoLib.ImportPath == "" {
 			return nil, fmt.Errorf("Unable to find importpath for %s", *t.Rule.Name)
 		}
-		exts[name] = ExtGoLib{ImportPath: importPath}
+		exts[name] = extGoLib
 	}
 	return exts, nil
 }
@@ -74,24 +81,41 @@ func LoadGoQuery(b []byte) (map[string]ExtGoLib, error) {
 //   <string name="importpath" value="github.com/axw/gocov"/>
 //   <string name="commit" value="54b98cfcac0c63fb3f9bd8e7ad241b724d4e985b"/>
 // </rule>
-func parseGoRepository(r *bzlpb.Rule) (string, string, error) {
-	var name, importPath string
+func parseGoRepository(r *bzlpb.Rule) (string, ExtGoLib, error) {
+	var name, importPath, commit, remote string
 	var err error
 	for _, attr := range r.Attribute {
 		switch *attr.Name {
 		case "name":
 			name, err = readStringAttr(attr)
 			if err != nil {
-				return "", "", err
+				return "", ExtGoLib{}, err
 			}
 		case "importpath":
 			importPath, err = readStringAttr(attr)
 			if err != nil {
-				return "", "", err
+				return "", ExtGoLib{}, err
 			}
+		case "commit", "tag", "version":
+			if commit != "" {
+				continue
+			}
+			commit, err = readStringAttr(attr)
+			if err != nil {
+				return "", ExtGoLib{}, err
+			}
+		case "remote":
+			remote, err = readStringAttr(attr)
+			if err != nil {
+				return "", ExtGoLib{}, err
+			}
+			remote = strings.TrimSuffix(remote, ".git")
 		}
 	}
-	return name, importPath, nil
+	if strings.Contains(remote, "://") {
+		remote = strings.Split(remote, "://")[1]
+	}
+	return name, ExtGoLib{ImportPath: importPath, Commit: commit, Remote: remote}, nil
 }
 
 // As there's no (easy?) way to determine if a git_repository rule contains go source,
@@ -115,27 +139,35 @@ func parseGoRepository(r *bzlpb.Rule) (string, string, error) {
 //         <rule-input name="@io_bazel_rules_go//third_party:com_github_golang_protobuf-gazelle.patch"/>
 //     </rule>
 // </query>
-func parseGitRepository(r *bzlpb.Rule) (string, string, error) {
-	var name, remote string
+func parseGitRepository(r *bzlpb.Rule) (string, ExtGoLib, error) {
+	var name, remote, commit string
 	var err error
 	for _, attr := range r.Attribute {
 		switch *attr.Name {
 		case "name":
 			name, err = readStringAttr(attr)
 			if err != nil {
-				return "", "", err
+				return "", ExtGoLib{}, err
 			}
 		case "remote":
 			remote, err = readStringAttr(attr)
 			if err != nil {
-				return "", "", err
+				return "", ExtGoLib{}, err
+			}
+		case "commit", "tag":
+			if commit != "" {
+				continue
+			}
+			commit, err = readStringAttr(attr)
+			if err != nil {
+				return "", ExtGoLib{}, err
 			}
 		}
 	}
 	if strings.Contains(remote, "://") {
 		remote = strings.Split(remote, "://")[1]
 	}
-	return name, remote, nil
+	return name, ExtGoLib{ImportPath: remote, Commit: commit}, nil
 }
 
 func readStringAttr(a *bzlpb.Attribute) (string, error) {
